@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 let debugDateOffset = 0;
 
@@ -14,10 +15,13 @@ const getTodayString = () => {
   return `${yyyy}-${mm}-${dd}`;
 };
 
-// 日付を読みやすい形式（YYYY年M月D日）に変換するヘルパー関数
+// 日付を読みやすい形式（YYYY年M月D日（曜））に変換するヘルパー関数
 const formatDate = (dateString: string) => {
   const [year, month, day] = dateString.split('-');
-  return `${year}年${parseInt(month, 10)}月${parseInt(day, 10)}日`;
+  const dateObj = new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
+  const days = ['日', '月', '火', '水', '木', '金', '土'];
+  const dayOfWeek = days[dateObj.getDay()];
+  return `${year}年${parseInt(month, 10)}月${parseInt(day, 10)}日（${dayOfWeek}）`;
 };
 
 // ページの一意なIDを生成するヘルパー関数
@@ -45,6 +49,7 @@ const PLACEHOLDERS = [
   "もし魔法が使えたら、今日は何をしたかった？"
 ];
 
+
 export default function App() {
   const [pages, setPages] = useState<PageData[]>([]);
   const [currentPageId, setCurrentPageId] = useState<string | null>(null);
@@ -54,6 +59,7 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [resetStep, setResetStep] = useState<0 | 1 | 2>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textFileInputRef = useRef<HTMLInputElement>(null);
 
   // 初回マウント時に localStorage からデータを読み込む（オートロード）
   useEffect(() => {
@@ -231,6 +237,25 @@ export default function App() {
     }
   };
 
+  const movePage = (date: string, index: number, direction: -1 | 1) => {
+    const group = groupedPages[date];
+    if (!group) return;
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= group.length) return;
+    
+    const newGroupList = [...group];
+    const [movedItem] = newGroupList.splice(index, 1);
+    newGroupList.splice(newIndex, 0, movedItem);
+
+    const sortedCreatedAts = group.map(p => p.createdAt).sort((a,b)=>a-b);
+    const updatedPages = newGroupList.map((p, idx) => ({ ...p, createdAt: sortedCreatedAts[idx] }));
+    
+    setPages(prev => prev.map(p => {
+      const updated = updatedPages.find(up => up.id === p.id);
+      return updated ? updated : p;
+    }));
+  };
+
   // ファイルを開く（ロード）ハンドラー
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -274,6 +299,121 @@ export default function App() {
     document.body.appendChild(downloadAnchorNode);
     downloadAnchorNode.click();
     downloadAnchorNode.remove();
+  };
+
+  // テキストファイルに一括エクスポートするハンドラー
+  const handleTextExport = () => {
+    // 日付ごとにグループ化
+    const groups: Record<string, PageData[]> = {};
+    pages.forEach(p => {
+      if (!groups[p.date]) groups[p.date] = [];
+      groups[p.date].push(p);
+    });
+    
+    // 日付順（新しい順）にソート
+    const sortedDatesLocal = Object.keys(groups).sort((a, b) => b.localeCompare(a));
+    
+    let textOutput = '';
+    sortedDatesLocal.forEach((date) => {
+      // 各日付の中で作成順（古い順）にソート
+      const dailyPages = [...groups[date]].sort((a, b) => a.createdAt - b.createdAt);
+      
+      textOutput += `${formatDate(date)}\n`;
+      dailyPages.forEach((page, index) => {
+        textOutput += `【${index + 1}ページ目】\n`;
+        textOutput += `${page.text}\n`;
+      });
+      textOutput += '\n'; // 日付の変わり目に改行
+    });
+
+    const dataStr = "data:text/plain;charset=utf-8," + encodeURIComponent(textOutput);
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href", dataStr);
+    downloadAnchorNode.setAttribute("download", "my_notes_export.txt");
+    document.body.appendChild(downloadAnchorNode);
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
+  };
+
+  // テキストファイルをインポートするハンドラー
+  const handleTextImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const content = event.target?.result as string;
+        const lines = content.split(/\r?\n/);
+        
+        let loadedPages: PageData[] = [];
+        let currentDate = '';
+        let currentText: string[] = [];
+        let pageCount = 0;
+        
+        // 解析用のヘルパー ("2026年3月16日（月）" -> "2026-03-16")
+        const parseDateString = (dateStr: string) => {
+          const match = dateStr.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
+          if (match) {
+            const y = match[1];
+            const m = match[2].padStart(2, '0');
+            const d = match[3].padStart(2, '0');
+            return `${y}-${m}-${d}`;
+          }
+          return null;
+        };
+
+        let isParsingPage = false;
+
+        const finalizePage = () => {
+          if (isParsingPage && currentDate) {
+            loadedPages.push({
+              id: generateId(),
+              date: currentDate,
+              text: currentText.join('\n').trim(),
+              createdAt: Date.now() + pageCount // 順序を保つため少しずつずらす
+            });
+            pageCount++;
+          }
+          currentText = [];
+        };
+
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].trimEnd();
+          
+          if (line.match(/^\d{4}年\d{1,2}月\d{1,2}日/)) {
+            finalizePage();
+            currentDate = parseDateString(line) || getTodayString();
+            isParsingPage = false;
+          } else if (line.match(/^【\d+ページ目】/)) {
+            finalizePage();
+            isParsingPage = true;
+          } else {
+            if (isParsingPage) {
+              currentText.push(line);
+            }
+          }
+        }
+        finalizePage();
+
+        if (loadedPages.length > 0) {
+          // 既存ページを置き換える（バックアップ読込と同様の挙動）
+          setPages(loadedPages);
+          
+          const latest = [...loadedPages].sort((a, b) => b.createdAt - a.createdAt)[0];
+          setCurrentPageId(latest.id);
+        } else {
+           alert("テキストフォーマットが正しくないか、読み込めるデータがありません。");
+        }
+      } catch (error) {
+        console.error('ファイルの読み込みに失敗しました', error);
+        alert("ファイルの読み込みに失敗しました。");
+      }
+      if (textFileInputRef.current) {
+        textFileInputRef.current.value = '';
+      }
+    };
+    reader.readAsText(file);
   };
 
   // 全データリセットハンドラー
@@ -355,41 +495,43 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-4 w-full xl:w-auto">
+          <div className="flex flex-col sm:flex-row gap-4 w-full xl:w-auto flex-wrap justify-end">
             <input 
               type="file" 
-              accept=".json" 
-              ref={fileInputRef} 
-              onChange={handleFileUpload} 
+              accept=".txt" 
+              ref={textFileInputRef} 
+              onChange={handleTextImport} 
               className="hidden" 
             />
             <button
-              onClick={() => fileInputRef.current?.click()}
-              className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xl font-bold py-3 px-6 rounded-xl shadow-sm border-2 border-slate-200 transition-all active:scale-95 focus:outline-none focus:ring-4 focus:ring-slate-300"
-              aria-label="ファイルを開く"
+              onClick={() => textFileInputRef.current?.click()}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xl font-bold py-3 px-4 rounded-xl shadow-sm border-2 border-indigo-200 transition-all active:scale-95 focus:outline-none focus:ring-4 focus:ring-indigo-300"
+              aria-label="テキストを開く"
+              title="テキストで書かれたノートを取り込みます"
             >
-              <span className="text-2xl">📂</span>
-              <span>開く</span>
+              <span className="text-2xl">📄</span>
+              <span>テキスト開く</span>
             </button>
             <button
-              onClick={handleDownload}
-              className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xl font-bold py-3 px-6 rounded-xl shadow-sm border-2 border-slate-200 transition-all active:scale-95 focus:outline-none focus:ring-4 focus:ring-slate-300"
-              aria-label="ファイルに保存する"
+              onClick={handleTextExport}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xl font-bold py-3 px-4 rounded-xl shadow-sm border-2 border-indigo-200 transition-all active:scale-95 focus:outline-none focus:ring-4 focus:ring-indigo-300"
+              aria-label="テキストで保存"
+              title="ノートを普通のテキストとして保存します"
             >
-              <span className="text-2xl">💾</span>
-              <span>保存</span>
+              <span className="text-2xl">📝</span>
+              <span>テキスト保存</span>
             </button>
           </div>
         </footer>
       </main>
 
       {/* 右側：サイドバー（固定幅） */}
-      <aside className="w-full md:w-[450px] md:shrink-0 h-full bg-indigo-50 p-6 md:p-10 flex flex-col gap-6 border-l-4 border-indigo-200 overflow-hidden">
+      <aside className="w-full md:w-[500px] md:shrink-0 h-full bg-indigo-50 p-6 md:p-10 flex flex-col gap-6 border-l-4 border-indigo-200 overflow-hidden">
         <div className="flex flex-col gap-4 pb-4 border-b-4 border-indigo-200">
           <div className="flex justify-between items-center">
             <h2 className="text-3xl md:text-4xl font-bold text-indigo-900 flex items-center gap-3">
               <span>📚</span>
-              <span>過去のノート</span>
+              <span>ノート</span>
             </h2>
             <button
               onClick={() => setIsSettingsOpen(true)}
@@ -417,29 +559,82 @@ export default function App() {
                 {formatDate(date)}
               </h3>
               <div className="flex flex-col gap-3 pl-4 border-l-4 border-indigo-200 ml-4">
-                {groupedPages[date].map((page, index) => {
-                  const isActive = page.id === currentPageId;
-                  return (
-                    <button
-                      key={page.id}
-                      onClick={() => setCurrentPageId(page.id)}
-                      className={`w-full text-left p-4 rounded-2xl text-2xl font-bold transition-all duration-200 flex items-center justify-between group focus:outline-none focus:ring-4 focus:ring-indigo-400 ${
-                        isActive 
-                          ? 'bg-indigo-600 text-white shadow-lg scale-[1.02] border-2 border-indigo-500' 
-                          : 'bg-white text-slate-800 hover:bg-indigo-100 hover:scale-[1.02] shadow border-2 border-transparent'
-                      }`}
-                      aria-pressed={isActive}
-                    >
-                      <span className="flex items-center gap-2">
-                        <span>📄</span>
-                        <span>{index + 1}ページ目</span>
-                      </span>
-                      <span className={`text-2xl transition-transform group-hover:translate-x-1 ${isActive ? 'opacity-100 translate-x-1' : 'opacity-0'}`}>
-                        👉
-                      </span>
-                    </button>
-                  );
-                })}
+                <AnimatePresence>
+                  {groupedPages[date].map((page, index) => {
+                    const isActive = page.id === currentPageId;
+                    const isFirst = index === 0;
+                    const isLast = index === groupedPages[date].length - 1;
+                    return (
+                      <motion.div 
+                        key={page.id} 
+                        layout
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        transition={{ 
+                          layout: { type: "spring", stiffness: 300, damping: 30 },
+                          opacity: { duration: 0.2 }
+                        }}
+                        className="flex items-center group relative origin-left"
+                      >
+                        <span 
+                          className={`absolute -left-8 text-2xl transition-transform ${
+                            isActive ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'
+                          }`}
+                        >
+                          👉
+                        </span>
+                        <div
+                          className={`w-full text-left p-4 rounded-2xl transition-all duration-200 flex items-center justify-between focus-within:ring-4 focus-within:ring-indigo-400 ${
+                            isActive 
+                              ? 'bg-indigo-600 text-white shadow-lg scale-[1.02] border-2 border-indigo-500' 
+                              : 'bg-white text-slate-800 hover:bg-indigo-100 hover:scale-[1.02] shadow border-2 border-transparent'
+                          }`}
+                        >
+                          <button
+                            onClick={() => setCurrentPageId(page.id)}
+                            className="flex-1 flex items-center gap-2 focus:outline-none"
+                            aria-pressed={isActive}
+                          >
+                            <span className="text-2xl">📄</span>
+                            <span className="text-2xl font-bold">{index + 1}ページ目</span>
+                            
+                            <div className="flex items-center gap-2 ml-auto">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); movePage(date, index, -1); }}
+                                disabled={isFirst}
+                                className={`p-2 rounded-xl text-3xl transition-all ${
+                                  isFirst 
+                                    ? 'opacity-30 cursor-not-allowed' 
+                                    : isActive ? 'text-white hover:bg-indigo-500 hover:scale-110 active:scale-95' 
+                                             : 'text-indigo-700 hover:bg-indigo-200 hover:scale-110 active:scale-95'
+                                }`}
+                                aria-label="上に移動"
+                                title="上に移動"
+                              >
+                                ⬆️
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); movePage(date, index, 1); }}
+                                disabled={isLast}
+                                className={`p-2 rounded-xl text-3xl transition-all ${
+                                  isLast 
+                                    ? 'opacity-30 cursor-not-allowed' 
+                                    : isActive ? 'text-white hover:bg-indigo-500 hover:scale-110 active:scale-95' 
+                                             : 'text-indigo-700 hover:bg-indigo-200 hover:scale-110 active:scale-95'
+                                }`}
+                                aria-label="下に移動"
+                                title="下に移動"
+                              >
+                                ⬇️
+                              </button>
+                            </div>
+                          </button>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </AnimatePresence>
               </div>
             </div>
           ))}
@@ -540,6 +735,32 @@ export default function App() {
                 <span>🚨</span>
                 <span>全データをリセットする</span>
               </button>
+              <div className="flex justify-center gap-6 mt-2 mb-2">
+                <input 
+                  type="file" 
+                  accept=".json" 
+                  ref={fileInputRef} 
+                  onChange={handleFileUpload} 
+                  className="hidden" 
+                />
+                <button
+                  onClick={handleDownload}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-500 py-2 px-6 rounded-xl font-bold transition-all text-lg shadow-sm border-2 border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-300 active:scale-95 flex items-center gap-2"
+                  aria-label="バックアップ"
+                >
+                  <span className="text-xl">💾</span>
+                  <span>バックアップ</span>
+                </button>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-500 py-2 px-6 rounded-xl font-bold transition-all text-lg shadow-sm border-2 border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-300 active:scale-95 flex items-center gap-2"
+                  aria-label="復元"
+                >
+                  <span className="text-xl">📂</span>
+                  <span>復元</span>
+                </button>
+              </div>
+
               <button
                 onClick={() => setIsSettingsOpen(false)}
                 className="w-full bg-slate-200 hover:bg-slate-300 text-slate-800 text-3xl font-bold py-5 rounded-2xl transition-all focus:outline-none focus:ring-4 focus:ring-slate-400 active:scale-95"
