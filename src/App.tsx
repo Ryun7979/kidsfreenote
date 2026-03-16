@@ -76,7 +76,7 @@ export default function App() {
       }
     }
 
-    // 今日のページが存在しない場合は自動で1枚目を作成する
+    // 今日のページが存在しない場合は自動で1ページ目を作成する
     const todaysPages = initialPages.filter(p => p.date === today);
     if (todaysPages.length === 0) {
       const newPage = { id: generateId(), date: today, text: '', createdAt: Date.now() };
@@ -189,7 +189,7 @@ export default function App() {
       if (!groups[p.date]) groups[p.date] = [];
       groups[p.date].push(p);
     });
-    // 各日付の中で作成順（古い順）にソートして「1枚目」「2枚目」と表示できるようにする
+    // 各日付の中で作成順（古い順）にソートして「1ページ目」「2ページ目」と表示できるようにする
     Object.values(groups).forEach(list => list.sort((a, b) => a.createdAt - b.createdAt));
     return groups;
   }, [pages]);
@@ -197,10 +197,10 @@ export default function App() {
   // 日付を新しい順にソート
   const sortedDates = Object.keys(groupedPages).sort((a, b) => b.localeCompare(a));
 
-  // 現在のページがその日の何枚目かを取得
+  // 現在のページがその日の何ページ目かを取得
   const currentPageIndex = groupedPages[currentPage.date]?.findIndex(p => p.id === currentPage.id) ?? 0;
 
-  // その日のページが1枚だけかどうか
+  // その日のページが1ページだけかどうか
   const isOnlyPageToday = (groupedPages[currentPage.date]?.length ?? 0) <= 1;
 
   // テキストサイズと行の高さ（点線の間隔）に応じたクラス名を取得
@@ -304,7 +304,7 @@ export default function App() {
           <div className="flex flex-col gap-2">
             <h1 className="text-4xl md:text-5xl font-bold text-indigo-900 tracking-tight flex items-center gap-3 flex-wrap">
               <span>✏️</span>
-              <span>{formatDate(currentPage.date)} {currentPageIndex + 1}枚目</span>
+              <span>{formatDate(currentPage.date)} {currentPageIndex + 1}ページ目</span>
             </h1>
           </div>
           <button
@@ -315,8 +315,8 @@ export default function App() {
                 ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed' 
                 : 'bg-rose-100 hover:bg-rose-200 text-rose-700 border-rose-300 focus:ring-rose-400'
             }`}
-            aria-label={isOnlyPageToday ? "最後の1枚は消せません" : "このページを消す"}
-            title={isOnlyPageToday ? "最後の1枚は消せません" : "このページを消す"}
+            aria-label={isOnlyPageToday ? "最後の1ページは消せません" : "このページを消す"}
+            title={isOnlyPageToday ? "最後の1ページは消せません" : "このページを消す"}
           >
             <span className="text-3xl">🗑️</span>
             <span>消す</span>
@@ -432,7 +432,7 @@ export default function App() {
                     >
                       <span className="flex items-center gap-2">
                         <span>📄</span>
-                        <span>{index + 1}枚目</span>
+                        <span>{index + 1}ページ目</span>
                       </span>
                       <span className={`text-2xl transition-transform group-hover:translate-x-1 ${isActive ? 'opacity-100 translate-x-1' : 'opacity-0'}`}>
                         👉
