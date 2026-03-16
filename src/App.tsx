@@ -279,8 +279,8 @@ export default function App() {
   return (
     <div className="flex flex-col md:flex-row h-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-200">
       
-      {/* 左側：メイン画面（70%） */}
-      <main className="w-full md:w-[70%] h-full p-6 md:p-10 flex flex-col gap-6 relative">
+      {/* 左側：メイン画面 */}
+      <main className="w-full md:flex-1 md:min-w-0 h-full p-6 md:p-10 flex flex-col gap-6 relative">
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b-4 border-indigo-200 pb-4 gap-4">
           <div className="flex flex-col gap-2">
             <h1 className="text-4xl md:text-5xl font-bold text-indigo-900 tracking-tight flex items-center gap-3 flex-wrap">
@@ -364,8 +364,8 @@ export default function App() {
         </footer>
       </main>
 
-      {/* 右側：サイドバー（30%） */}
-      <aside className="w-full md:w-[30%] h-full bg-indigo-50 p-6 md:p-10 flex flex-col gap-6 border-l-4 border-indigo-200 overflow-hidden">
+      {/* 右側：サイドバー（固定幅） */}
+      <aside className="w-full md:w-[450px] md:shrink-0 h-full bg-indigo-50 p-6 md:p-10 flex flex-col gap-6 border-l-4 border-indigo-200 overflow-hidden">
         <div className="flex flex-col gap-4 pb-4 border-b-4 border-indigo-200">
           <div className="flex justify-between items-center">
             <h2 className="text-3xl md:text-4xl font-bold text-indigo-900 flex items-center gap-3">
