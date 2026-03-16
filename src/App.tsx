@@ -32,6 +32,19 @@ type PageData = {
   createdAt: number;
 };
 
+const PLACEHOLDERS = [
+  "ここに出来事や考えたことを書いてね！",
+  "今日はどんな1日だった？",
+  "一番楽しかったことは何かな？",
+  "新しく見つけたものはある？",
+  "明日はどんなことをしたい？",
+  "今日がんばったことを教えて！",
+  "今、一番気になっていることは？",
+  "最近、面白かった本や動画はある？",
+  "今日食べたもので、一番おいしかったのは？",
+  "もし魔法が使えたら、今日は何をしたかった？"
+];
+
 export default function App() {
   const [pages, setPages] = useState<PageData[]>([]);
   const [currentPageId, setCurrentPageId] = useState<string | null>(null);
@@ -162,6 +175,12 @@ export default function App() {
   const currentPage = useMemo(() => {
     return pages.find(p => p.id === currentPageId) || { id: '', date: getTodayString(), text: '', createdAt: Date.now() };
   }, [pages, currentPageId]);
+
+  // 現在のページのプレースホルダーをランダムに決定
+  const currentPlaceholder = useMemo(() => {
+    if (!currentPageId) return PLACEHOLDERS[0];
+    return PLACEHOLDERS[Math.floor(Math.random() * PLACEHOLDERS.length)];
+  }, [currentPageId]);
 
   // ページを日付ごとにグループ化してソート
   const groupedPages = useMemo(() => {
@@ -308,7 +327,7 @@ export default function App() {
           <textarea
             value={currentPage.text}
             onChange={handleTextChange}
-            placeholder="ここに出来事や考えたことを書いてね！"
+            placeholder={currentPlaceholder}
             className={`flex-1 w-full resize-none rounded-3xl p-8 ${textStyles} bg-local bg-origin-content shadow-inner bg-white border-4 border-slate-300 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-200 focus:outline-none transition-all`}
             style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='100%25'%3E%3Cline x1='0' y1='100%25' x2='8' y2='100%25' stroke='%23cbd5e1' stroke-width='2' stroke-dasharray='4,4' transform='translate(0, -1)'/%3E%3C/svg%3E")` }}
             aria-label="テキスト入力エリア"
